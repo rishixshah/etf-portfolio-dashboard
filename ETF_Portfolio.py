@@ -14,12 +14,12 @@ st.title("📊 ETF Portfolio Dashboard")
 # 1. PORTFOLIO CONFIGURATION (YOUR ETFs)
 # ==========================================
 portfolio_shares = {
-    'VIG': 751.162,
-    'VOO': 2200.489,
-    'VTI': 3893.905,
-    'JEPI':4278.788,
-    'QQQ': 1095.637,
-    'SOXX': 132.604,
+    'VIG': 745.089,
+    'VOO': 2187.246,
+    'VTI': 3870.708,
+    'JEPI':1572.397,
+    'QQQ': 1092.998,
+    'SOXX': 132.463,
     'SPYI': 3709
 }
 
