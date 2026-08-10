@@ -14,15 +14,16 @@ st.title("📊 ETF Portfolio Dashboard")
 # 1. PORTFOLIO CONFIGURATION (YOUR ETFs)
 # ==========================================
 portfolio_shares = {
-    'VIG': 745.089,
-    'VOO': 2187.246,
-    'VTI': 3870.708,
-    'JEPI':1572.397,
-    'QQQ': 1092.998,
-    'SOXX': 132.463,
+    'VIG': 751.162,
+    'VOO': 2200.489,
+    'VTI': 3893.905,
+    'JEPI': 4278.788,
+    'QQQ': 1095.637,
+    'SOXX': 132.604,
     'SPYI': 3709
 }
 
+# Optional: Custom start dates for dividend tracking per ticker (if bought mid-year)
 custom_div_start_dates = {}
 
 tickers = list(portfolio_shares.keys())
@@ -42,6 +43,7 @@ with st.spinner('Fetching live ETF market data...'):
         df_close = df_all[['Close']].copy()
         df_divs = df_all[['Dividends']].copy()
 
+    # Fill missing price gaps
     df_close = df_close.ffill().bfill()
 
     latest_date = df_close.index[-1].strftime('%Y-%m-%d')
@@ -70,11 +72,13 @@ with st.spinner('Fetching live ETF market data...'):
     df_portfolio['1-Day Change ($)'] = df_portfolio['Shares'] * (df_portfolio['Latest Price'] - df_portfolio['Prev Price'])
     df_portfolio['1-Day Change %'] = ((df_portfolio['Latest Price'] - df_portfolio['Prev Price']) / df_portfolio['Prev Price']) * 100
     df_portfolio['YTD Return %'] = (((df_portfolio['Latest Price'] + df_portfolio['Divs Recd/Share']) - year_start_prices) / year_start_prices) * 100
+    df_portfolio['YTD Divs Total ($)'] = df_portfolio['Shares'] * df_portfolio['Divs Recd/Share']
 
     total_portfolio_value = df_portfolio['Position Value ($)'].sum()
     total_daily_change_dollars = df_portfolio['1-Day Change ($)'].sum()
     prev_total_value = total_portfolio_value - total_daily_change_dollars
     total_daily_change_pct = (total_daily_change_dollars / prev_total_value) * 100
+    total_ytd_dividends = df_portfolio['YTD Divs Total ($)'].sum()
 
 # ==========================================
 # 3. DISPLAY STREAMLIT UI METRICS
@@ -117,10 +121,15 @@ df_display['1-Day Change ($)'] = df_display['1-Day Change ($)'].map('{:+,.2f}'.f
 df_display['1-Day Change %'] = df_display['1-Day Change %'].map('{:+.2f}%'.format)
 df_display['YTD Return %'] = df_display['YTD Return %'].map('{:+.2f}%'.format)
 df_display['Divs Recd/Share'] = df_display['Divs Recd/Share'].map('${:,.2f}'.format)
+df_display['YTD Divs Total ($)'] = df_display['YTD Divs Total ($)'].map('${:,.2f}'.format)
 
 st.dataframe(df_display, use_container_width=True)
+
+# Total YTD Dividends Banner below the table
+st.markdown(f"### 💰 **Total YTD Dividends Received:** `${total_ytd_dividends:,.2f}`")
 
 # Save static files for background Actions
 with open("etf_summary.txt", "w") as f:
     f.write(df_display.to_string())
+    f.write(f"\n\nTotal YTD Dividends Received: ${total_ytd_dividends:,.2f}")
 plt.savefig("latest_etf_chart.png", dpi=300)
