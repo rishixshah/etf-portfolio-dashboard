@@ -39,27 +39,40 @@ with st.spinner('Pulling live market data from Yahoo Finance...'):
     for ticker in tickers:
         t = yf.Ticker(ticker)
 
-        # 1. Pull full historical candles directly from Yahoo Finance
+        # 1. Pull historical daily candles for YTD baseline & backup
         hist = t.history(period="ytd", auto_adjust=False)
 
-        # 2. Extract Latest Price & Official Previous Close from Yahoo Finance fast_info
+        # 2. Extract Exact Official Previous Close from Yahoo Finance
+        prev_close_val = None
         try:
-            live_price = t.fast_info['lastPrice']
-            prev_close = t.fast_info['previousClose']
+            info_dict = t.info
+            prev_close_val = info_dict.get('regularMarketPreviousClose') or info_dict.get('previousClose')
+        except Exception:
+            prev_close_val = None
+
+        if not prev_close_val:
+            try:
+                prev_close_val = t.fast_info.get('regular_market_previous_close') or t.fast_info.get('previousClose')
+            except Exception:
+                prev_close_val = hist['Close'].iloc[-2] if len(hist) >= 2 else (hist['Close'].iloc[-1] if not hist.empty else 0.0)
+
+        prev_prices[ticker] = round(float(prev_close_val), 2)
+
+        # 3. Extract Live Market Price
+        try:
+            live_price = t.fast_info.get('lastPrice') or t.fast_info.get('last_price') or t.info.get('regularMarketPrice')
         except Exception:
             live_price = hist['Close'].iloc[-1] if not hist.empty else 0.0
-            prev_close = hist['Close'].iloc[-2] if len(hist) >= 2 else live_price
 
         latest_prices[ticker] = round(float(live_price), 2)
-        prev_prices[ticker] = round(float(prev_close), 2)
 
-        # 3. Extract Year-Start baseline price for YTD Return
+        # 4. Extract Year-Start Baseline Price for YTD Return
         if not hist.empty:
             year_start_prices[ticker] = round(float(hist['Close'].iloc[0]), 2)
         else:
             year_start_prices[ticker] = latest_prices[ticker]
 
-        # 4. Extract Total YTD Cash Dividends from Yahoo Finance
+        # 5. Extract Total YTD Cash Dividends
         start_div_date = custom_div_start_dates.get(ticker, current_year_start)
         try:
             div_series = t.dividends
@@ -98,7 +111,7 @@ with st.spinner('Pulling live market data from Yahoo Finance...'):
 col1, col2, col3 = st.columns(3)
 col1.metric("Total ETF Portfolio Value", f"${total_portfolio_value:,.2f}")
 col2.metric("Today's Change ($)", f"{'+' if total_daily_change_dollars >= 0 else '-'}${abs(total_daily_change_dollars):,.2f}", f"{total_daily_change_pct:+.2f}%")
-col3.metric("Data Source", "Yahoo Finance (Real-Time)")
+col3.metric("Data Source", "Yahoo Finance (Official Quote)")
 
 st.divider()
 
