@@ -30,10 +30,18 @@ today = datetime.now()
 end_date = (today + timedelta(days=1)).strftime('%Y-%m-%d')
 
 # ==========================================
-# 2. FETCH DATA & CALCULATE (WITH FALLBACK)
+# 2. FETCH DATA & CALCULATE (ACCURATE PRICES & PREV CLOSE)
 # ==========================================
 with st.spinner('Fetching live ETF market data...'):
-    df_all = yf.download(tickers, start="2025-12-31", end=end_date, actions=True, progress=False)
+    # Download unadjusted historical prices for YTD tracking & dividends
+    df_all = yf.download(
+        tickers, 
+        start="2025-12-31", 
+        end=end_date, 
+        actions=True, 
+        auto_adjust=False, 
+        progress=False
+    )
 
     if isinstance(df_all.columns, pd.MultiIndex):
         df_close = df_all['Close'].copy()
@@ -42,27 +50,30 @@ with st.spinner('Fetching live ETF market data...'):
         df_close = df_all[['Close']].copy()
         df_divs = df_all[['Dividends']].copy()
 
-    # Fallback: Check for any ticker that failed in the batch download and fetch directly
-    for ticker in tickers:
-        if ticker not in df_close.columns or df_close[ticker].dropna().empty:
-            t = yf.Ticker(ticker)
-            hist = t.history(start="2025-12-31", end=end_date)
-            if not hist.empty:
-                df_close[ticker] = hist['Close']
-                df_divs[ticker] = hist['Dividends']
-
-    # Fill missing dates/gaps
     df_close = df_close.ffill().bfill()
-
-    latest_date = df_close.index[-1].strftime('%Y-%m-%d')
-    prev_date = df_close.index[-2].strftime('%Y-%m-%d')
-
-    latest_prices = df_close.iloc[-1].round(2)
-    prev_prices = df_close.iloc[-2].round(2)
     year_start_prices = df_close.iloc[0].round(2)
 
+    latest_prices = pd.Series(index=tickers, dtype='float64')
+    prev_prices = pd.Series(index=tickers, dtype='float64')
     divs_ytd = pd.Series(index=tickers, dtype='float64')
+
+    # Pull official real-time price & previous close per ticker
     for ticker in tickers:
+        t = yf.Ticker(ticker)
+        
+        # 1. Latest Price
+        try:
+            latest_prices[ticker] = round(t.fast_info['lastPrice'], 2)
+        except Exception:
+            latest_prices[ticker] = round(df_close[ticker].iloc[-1], 2)
+
+        # 2. Official Previous Close
+        try:
+            prev_prices[ticker] = round(t.fast_info['previousClose'], 2)
+        except Exception:
+            prev_prices[ticker] = round(df_close[ticker].iloc[-2], 2)
+
+        # 3. YTD Dividends Sum
         start_date = custom_div_start_dates.get(ticker, '2026-01-01')
         if ticker in df_divs.columns:
             divs_ytd[ticker] = df_divs[ticker].loc[start_date:].sum()
@@ -85,7 +96,7 @@ with st.spinner('Fetching live ETF market data...'):
     total_portfolio_value = df_portfolio['Position Value ($)'].sum()
     total_daily_change_dollars = df_portfolio['1-Day Change ($)'].sum()
     prev_total_value = total_portfolio_value - total_daily_change_dollars
-    total_daily_change_pct = (total_daily_change_dollars / prev_total_value) * 100
+    total_daily_change_pct = (total_daily_change_dollars / prev_total_value) * 100 if prev_total_value != 0 else 0.0
     total_ytd_dividends = df_portfolio['YTD Divs Total ($)'].sum()
 
 # ==========================================
@@ -94,7 +105,7 @@ with st.spinner('Fetching live ETF market data...'):
 col1, col2, col3 = st.columns(3)
 col1.metric("Total ETF Portfolio Value", f"${total_portfolio_value:,.2f}")
 col2.metric("Today's Change ($)", f"${total_daily_change_dollars:+,.2f}", f"{total_daily_change_pct:+.2f}%")
-col3.metric("Data Date", latest_date)
+col3.metric("Data Date", today.strftime('%Y-%m-%d'))
 
 st.divider()
 
