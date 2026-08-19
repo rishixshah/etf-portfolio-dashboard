@@ -23,7 +23,6 @@ portfolio_shares = {
     'SPYI': 3709
 }
 
-# Optional: Custom start dates for dividend tracking per ticker (if bought mid-year)
 custom_div_start_dates = {}
 
 tickers = list(portfolio_shares.keys())
@@ -31,7 +30,7 @@ today = datetime.now()
 end_date = (today + timedelta(days=1)).strftime('%Y-%m-%d')
 
 # ==========================================
-# 2. FETCH DATA & CALCULATE
+# 2. FETCH DATA & CALCULATE (WITH FALLBACK)
 # ==========================================
 with st.spinner('Fetching live ETF market data...'):
     df_all = yf.download(tickers, start="2025-12-31", end=end_date, actions=True, progress=False)
@@ -43,7 +42,16 @@ with st.spinner('Fetching live ETF market data...'):
         df_close = df_all[['Close']].copy()
         df_divs = df_all[['Dividends']].copy()
 
-    # Fill missing price gaps
+    # Fallback: Check for any ticker that failed in the batch download and fetch directly
+    for ticker in tickers:
+        if ticker not in df_close.columns or df_close[ticker].dropna().empty:
+            t = yf.Ticker(ticker)
+            hist = t.history(start="2025-12-31", end=end_date)
+            if not hist.empty:
+                df_close[ticker] = hist['Close']
+                df_divs[ticker] = hist['Dividends']
+
+    # Fill missing dates/gaps
     df_close = df_close.ffill().bfill()
 
     latest_date = df_close.index[-1].strftime('%Y-%m-%d')
@@ -51,7 +59,7 @@ with st.spinner('Fetching live ETF market data...'):
 
     latest_prices = df_close.iloc[-1].round(2)
     prev_prices = df_close.iloc[-2].round(2)
-    year_start_prices = df_close.loc['2025-12-31'].round(2)
+    year_start_prices = df_close.iloc[0].round(2)
 
     divs_ytd = pd.Series(index=tickers, dtype='float64')
     for ticker in tickers:
