@@ -30,10 +30,10 @@ today = datetime.now()
 end_date = (today + timedelta(days=1)).strftime('%Y-%m-%d')
 
 # ==========================================
-# 2. FETCH DATA & CALCULATE (ACCURATE PRICES & PREV CLOSE)
+# 2. FETCH DATA & CALCULATE (ACCURATE LIVE & PREV CLOSE)
 # ==========================================
 with st.spinner('Fetching live ETF market data...'):
-    # Download unadjusted historical prices for YTD tracking & dividends
+    # Download unadjusted historical data for YTD calculations & dividends
     df_all = yf.download(
         tickers, 
         start="2025-12-31", 
@@ -57,23 +57,39 @@ with st.spinner('Fetching live ETF market data...'):
     prev_prices = pd.Series(index=tickers, dtype='float64')
     divs_ytd = pd.Series(index=tickers, dtype='float64')
 
-    # Pull official real-time price & previous close per ticker
     for ticker in tickers:
         t = yf.Ticker(ticker)
         
-        # 1. Latest Price
-        try:
-            latest_prices[ticker] = round(t.fast_info['lastPrice'], 2)
-        except Exception:
-            latest_prices[ticker] = round(df_close[ticker].iloc[-1], 2)
+        # 1. Pull recent unadjusted daily historical candles
+        hist = t.history(period="5d", auto_adjust=False)
+        
+        # Determine latest price and official previous close
+        if not hist.empty:
+            # Check if fast_info or info has an explicit previous close
+            fast_prev = None
+            try:
+                fast_prev = t.fast_info.get('previousClose') or t.fast_info.get('previous_close')
+            except Exception:
+                fast_prev = None
 
-        # 2. Official Previous Close
-        try:
-            prev_prices[ticker] = round(t.fast_info['previousClose'], 2)
-        except Exception:
+            if fast_prev and not pd.isna(fast_prev):
+                prev_prices[ticker] = round(float(fast_prev), 2)
+            elif len(hist) >= 2:
+                prev_prices[ticker] = round(float(hist['Close'].iloc[-2]), 2)
+            else:
+                prev_prices[ticker] = round(float(hist['Close'].iloc[-1]), 2)
+
+            # Latest Live Price
+            try:
+                live_val = t.fast_info.get('lastPrice') or t.fast_info.get('last_price')
+                latest_prices[ticker] = round(float(live_val), 2) if live_val else round(float(hist['Close'].iloc[-1]), 2)
+            except Exception:
+                latest_prices[ticker] = round(float(hist['Close'].iloc[-1]), 2)
+        else:
+            latest_prices[ticker] = round(df_close[ticker].iloc[-1], 2)
             prev_prices[ticker] = round(df_close[ticker].iloc[-2], 2)
 
-        # 3. YTD Dividends Sum
+        # 2. YTD Dividends Sum
         start_date = custom_div_start_dates.get(ticker, '2026-01-01')
         if ticker in df_divs.columns:
             divs_ytd[ticker] = df_divs[ticker].loc[start_date:].sum()
