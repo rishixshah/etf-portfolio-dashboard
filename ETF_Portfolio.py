@@ -2,7 +2,6 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 from datetime import datetime
-import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 
@@ -40,7 +39,7 @@ with st.spinner('Pulling live market data from Yahoo Finance...'):
     for ticker in tickers:
         t = yf.Ticker(ticker)
 
-        # 1. Historical daily candles for YTD baseline & fallback
+        # 1. Pull historical daily candles for YTD baseline & backup
         hist = t.history(period="ytd", auto_adjust=False)
 
         # 2. Extract Exact Official Previous Close from Yahoo Finance
@@ -116,61 +115,29 @@ col3.metric("Data Source", "Yahoo Finance (Official Quote)")
 
 st.divider()
 
-# ==========================================
-# 4. INTERACTIVE PLOTLY CHART
-# ==========================================
+# Position Values Chart
 st.subheader("Position Values & Gain/Loss")
+colors = ['#2ca02c' if x >= 0 else '#d62728' for x in df_portfolio['1-Day Change ($)']]
+fig, ax = plt.subplots(figsize=(12, 5))
+bars = ax.bar(df_portfolio.index, df_portfolio['Position Value ($)'], color=colors, alpha=0.85)
 
-bar_colors = ["#2ca02c" if val >= 0 else "#d62728" for val in df_portfolio["1-Day Change ($)"]]
-text_labels = [
-    f"${val:,.0f}<br>({'+' if chg >= 0 else '-'}${abs(chg):,.0f})" 
-    for val, chg in zip(df_portfolio["Position Value ($)"], df_portfolio["1-Day Change ($)"])
-]
+ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('${x:,.0f}'))
+max_val = df_portfolio['Position Value ($)'].max()
 
-fig = go.Figure()
+for i, bar in enumerate(bars):
+    yval = bar.get_height()
+    day_change = df_portfolio['1-Day Change ($)'].iloc[i]
+    sign = "+" if day_change >= 0 else "-"
+    ax.text(bar.get_x() + bar.get_width()/2, yval + (max_val * 0.02), f"${yval:,.0f}\n({sign}${abs(day_change):,.0f})", ha='center', va='bottom', fontsize=7, fontweight='bold')
 
-fig.add_trace(
-    go.Bar(
-        x=df_portfolio.index,
-        y=df_portfolio["Position Value ($)"],
-        marker_color=bar_colors,
-        text=text_labels,
-        textposition="outside",
-        customdata=df_portfolio[["Shares", "Latest Price", "1-Day Change ($)", "1-Day Change %"]],
-        hovertemplate=(
-            "<b>%{x}</b><br>"
-            + "Position Value: $%{y:,.2f}<br>"
-            + "Shares: %{customdata[0]:,.3f}<br>"
-            + "Current Price: $%{customdata[1]:,.2f}<br>"
-            + "1-Day Change: %{customdata[2]:+,.2f} (%{customdata[3]:+.2f}%)"
-            + "<extra></extra>"
-        ),
-    )
-)
-
-max_val = df_portfolio["Position Value ($)"].max() if not df_portfolio.empty else 1000
-
-fig.update_layout(
-    yaxis=dict(
-        tickprefix="$",
-        tickformat=",.0f",
-        range=[0, max_val * 1.25],
-        gridcolor="rgba(128, 128, 128, 0.2)",
-    ),
-    xaxis=dict(tickangle=-45, showgrid=False),
-    margin=dict(l=20, r=20, t=30, b=50),
-    height=450,
-    showlegend=False,
-    template="plotly_dark",
-)
-
-st.plotly_chart(fig, use_container_width=True)
+ax.set_ylim(0, max_val * 1.25)
+plt.xticks(rotation=45)
+plt.grid(axis='y', linestyle='--', alpha=0.3)
+st.pyplot(fig)
 
 st.divider()
 
-# ==========================================
-# 5. HOLDINGS SUMMARY TABLE
-# ==========================================
+# Holdings Summary Table
 st.subheader("Holdings Summary")
 df_display = df_portfolio.copy()
 df_display['Latest Price'] = df_display['Latest Price'].map('${:,.2f}'.format)
@@ -187,21 +154,8 @@ st.dataframe(df_display, use_container_width=True)
 # Bottom Dividend Banner
 st.markdown(f"### 💰 **Total YTD Dividends Received:** `${total_ytd_dividends:,.2f}`")
 
-# Static export files for background Actions
+# Static export files
 with open("etf_summary.txt", "w") as f:
     f.write(df_display.to_string())
     f.write(f"\n\nTotal YTD Dividends Received: ${total_ytd_dividends:,.2f}")
-
-# Background chart image export for GitHub Actions
-fig_static, ax = plt.subplots(figsize=(14, 5))
-bars = ax.bar(df_portfolio.index, df_portfolio['Position Value ($)'], color=bar_colors, alpha=0.85)
-ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('${x:,.0f}'))
-for i, bar in enumerate(bars):
-    yval = bar.get_height()
-    day_change = df_portfolio['1-Day Change ($)'].iloc[i]
-    sign = "+" if day_change >= 0 else "-"
-    ax.text(bar.get_x() + bar.get_width()/2, yval + (max_val * 0.02), f"${yval:,.0f}\n({sign}${abs(day_change):,.0f})", ha='center', va='bottom', fontsize=7, fontweight='bold')
-ax.set_ylim(0, max_val * 1.25 if max_val > 0 else 1000)
-plt.xticks(rotation=45)
-plt.grid(axis='y', linestyle='--', alpha=0.3)
 plt.savefig("latest_etf_chart.png", dpi=300)
