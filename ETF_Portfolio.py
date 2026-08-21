@@ -12,7 +12,7 @@ st.set_page_config(page_title="ETF Portfolio Dashboard", layout="wide")
 st.title("📊 ETF Portfolio Dashboard")
 
 # ==========================================
-# 1. PORTFOLIO CONFIGURATION (YOUR ETFs)
+# 1. PORTFOLIO CONFIGURATION (ETFs ONLY)
 # ==========================================
 portfolio_shares = {
     'VIG': 751.162,
@@ -117,7 +117,7 @@ col3.metric("Data Source", "Yahoo Finance (Official Quote)")
 st.divider()
 
 # ==========================================
-# 4. INTERACTIVE PLOTLY CHART (WEB UI)
+# 4. INTERACTIVE PLOTLY CHART (2 DECIMAL PLACES)
 # ==========================================
 st.subheader("Position Values & Gain/Loss")
 
@@ -126,6 +126,14 @@ text_labels = [
     f"${val:,.0f}<br>({'+' if chg >= 0 else '-'}${abs(chg):,.0f})" 
     for val, chg in zip(df_portfolio["Position Value ($)"], df_portfolio["1-Day Change ($)"])
 ]
+
+# Explicit 2-decimal formatting for tooltip fields
+hover_customdata = list(zip(
+    df_portfolio['Shares'].apply(lambda x: f"{x:,.3f}".rstrip('0').rstrip('.')),
+    df_portfolio['Latest Price'].apply(lambda x: f"{x:,.2f}"),
+    df_portfolio['1-Day Change ($)'].apply(lambda x: f"{'+' if x >= 0 else '-'}${abs(x):,.2f}"),
+    df_portfolio['1-Day Change %'].apply(lambda x: f"{x:+.2f}%")
+))
 
 fig = go.Figure()
 
@@ -136,13 +144,13 @@ fig.add_trace(
         marker_color=bar_colors,
         text=text_labels,
         textposition="outside",
-        customdata=df_portfolio[["Shares", "Latest Price", "1-Day Change ($)", "1-Day Change %"]],
+        customdata=hover_customdata,
         hovertemplate=(
             "<b>%{x}</b><br>"
             + "Position Value: $%{y:,.2f}<br>"
-            + "Shares: %{customdata[0]:,.3f}<br>"
-            + "Current Price: $%{customdata[1]:,.2f}<br>"
-            + "1-Day Change: %{customdata[2]:+,.2f} (%{customdata[3]:+.2f}%)"
+            + "Shares: %{customdata[0]}<br>"
+            + "Current Price: $%{customdata[1]}<br>"
+            + "1-Day Change: %{customdata[2]} (%{customdata[3]})"
             + "<extra></extra>"
         ),
     )
@@ -164,7 +172,6 @@ fig.update_layout(
     template="plotly_dark",
 )
 
-# Enable interactive toolbar modes explicitly
 st.plotly_chart(
     fig, 
     use_container_width=True, 
